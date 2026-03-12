@@ -11,10 +11,10 @@ const HELENA_TOKEN = process.env.HELENA_TOKEN || 'pn_zff6DnFtKnpVMblIDHkhmQSH9gH
 
 // Templates aprovados no WhatsApp (ajuste os nomes conforme seus templates)
 const TEMPLATES = {
-  DIA_1: 'followup_dia_1',   // Nome do template no WhatsApp
-  DIA_3: 'followup_dia_3',
-  DIA_7: 'followup_dia_7',
-  DIA_30: 'followup_dia_30'
+  DIA_1: 'ca4d6_reativacao',   // Nome do template no WhatsApp
+  DIA_3: 'ca4d6_reativacao',
+  DIA_7: 'ca4d6_reativacao',
+  DIA_30: 'ca4d6_reativacao'
 };
 
 // Armazena quem já recebeu follow-up (em produção, use banco de dados)
