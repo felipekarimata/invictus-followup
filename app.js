@@ -336,35 +336,46 @@ app.get('/api/tags', async (req, res) => {
 // Get Contacts (with filters)
 app.get('/api/contacts', async (req, res) => {
   const channelId = req.query.channelId;
-  const tags = req.query.tags ? req.query.tags.split(',') : [];
-  const days = req.query.days ? req.query.days.split(',').map(Number) : [1, 3, 7, 30];
+  const tags = req.query.tags ? req.query.tags.split(',').filter(t => t) : [];
+  const days = req.query.days ? req.query.days.split(',').map(Number).filter(d => d) : [1, 3, 7, 30];
+
+  if (!channelId) {
+    return res.status(400).json({ error: 'channelId é obrigatório' });
+  }
 
   try {
-    const contacts = await getContacts({ tags });
+    console.log(`📱 Buscando contatos para canal ${channelId}, tags: ${tags.join(',') || 'nenhuma'}, dias: ${days.join(',')}`);
+
+    // Buscar contatos com os filtros de tags
+    const contacts = await getContacts({ tags: tags.length > 0 ? tags : [] });
+    console.log(`📋 Total de contatos encontrados: ${contacts.length}`);
 
     // Enriquecer contatos com informação de dias desde última mensagem
     const enrichedContacts = [];
     for (const contact of contacts) {
-      const messages = await getMessages(contact.id);
-      if (messages && messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        const lastMessageDate = lastMessage.created_at || lastMessage.timestamp || lastMessage.date;
-        const daysSinceLastMessage = getDaysDifference(lastMessageDate);
+      try {
+        const messages = await getMessages(contact.id);
+        if (messages && messages.length > 0) {
+          const lastMessage = messages[messages.length - 1];
+          const lastMessageDate = lastMessage.created_at || lastMessage.timestamp || lastMessage.date;
+          const daysSinceLastMessage = getDaysDifference(lastMessageDate);
 
-        // Apenas incluir se está dentro dos dias selecionados
-        if (days.includes(daysSinceLastMessage)) {
           enrichedContacts.push({
             ...contact,
-            daysSinceLastMessage
+            daysSinceLastMessage,
+            channelId: channelId // Adicionar o canal selecionado
           });
         }
+      } catch (messageError) {
+        console.warn(`⚠️ Erro ao buscar mensagens para ${contact.phone}:`, messageError.message);
       }
     }
 
+    console.log(`✅ Retornando ${enrichedContacts.length} contatos`);
     res.json(enrichedContacts);
   } catch (error) {
-    console.error('Erro ao buscar contatos:', error);
-    res.json([]);
+    console.error('❌ Erro ao buscar contatos:', error);
+    res.status(500).json({ error: 'Erro ao buscar contatos: ' + error.message });
   }
 });
 

@@ -434,7 +434,10 @@
         <!-- Nome da Empresa -->
         <div class="config-group">
           <label>👥 Nome da Empresa</label>
-          <input type="text" id="companyInput" placeholder="Ex: Invictus Marketing" onchange="saveConfig()">
+          <div style="padding: 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 5px; color: #333; font-weight: bold;">
+            <span id="companyDisplay">Carregando...</span>
+          </div>
+          <input type="hidden" id="companyInput">
         </div>
 
         <!-- Número WhatsApp -->
@@ -590,21 +593,18 @@
       try {
         const response = await fetch(`${API_BASE}/account`);
         const data = await response.json();
-        let companyName = data.name || data.company || '';
+        let companyName = data.name || data.company || 'Não configurada';
 
-        if (!companyName) {
-          // Se API falhar, não mostra, mas o usuário pode digitar no input
-          companyName = '';
-        }
+        // Guardar no hidden input
+        document.getElementById('companyInput').value = companyName;
 
-        const companyInput = document.getElementById('companyInput');
-        if (companyName) {
-          companyInput.value = companyName;
-        }
-        document.getElementById('companyName').textContent = `👥 Empresa: ${companyInput.value || 'Não configurada'}`;
+        // Exibir no display (fixo)
+        document.getElementById('companyDisplay').textContent = companyName;
+        document.getElementById('companyName').textContent = `👥 Empresa: ${companyName}`;
       } catch (error) {
         console.error('Erro ao carregar conta:', error);
-        document.getElementById('companyName').textContent = `👥 Empresa: Digite o nome`;
+        document.getElementById('companyDisplay').textContent = 'Não configurada';
+        document.getElementById('companyName').textContent = `👥 Empresa: Não configurada`;
       }
     }
 
@@ -887,6 +887,7 @@
     // Search Contacts
     async function searchContacts() {
       const selectedChannelId = document.getElementById('channelSelect').value;
+      const selectedChannelText = document.getElementById('channelSelect').options[document.getElementById('channelSelect').selectedIndex].text;
       const selectedTags = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(el => el.value);
 
       if (!selectedChannelId) {
@@ -897,7 +898,7 @@
       const contactsCard = document.getElementById('contactsCard');
       const contactsList = document.getElementById('contactsList');
       contactsCard.style.display = 'block';
-      contactsList.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando contatos...</div>';
+      contactsList.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando contatos para ' + selectedChannelText + '...</div>';
 
       try {
         const params = new URLSearchParams({
@@ -907,18 +908,30 @@
         });
 
         const response = await fetch(`${API_BASE}/contacts?${params}`);
-        const contacts = await response.json();
 
-        if (!contacts || contacts.length === 0) {
-          contactsList.innerHTML = '<p style="color: #666;">Nenhum contato encontrado com os filtros selecionados.</p>';
+        if (!response.ok) {
+          contactsList.innerHTML = '<p style="color: red;">Erro ao buscar contatos: ' + response.statusText + '</p>';
           return;
         }
 
-        let html = '';
+        const contacts = await response.json();
+
+        if (!contacts || contacts.length === 0) {
+          contactsList.innerHTML = `
+            <p style="color: #666;">
+              ℹ️ Nenhum contato encontrado com os filtros selecionados.<br>
+              Tags: ${selectedTags.length > 0 ? selectedTags.join(', ') : 'Nenhuma'}<br>
+              Dias: ${selectedDays.join(', ')}
+            </p>
+          `;
+          return;
+        }
+
+        let html = `<p style="color: #666; margin-bottom: 15px;"><strong>✅ ${contacts.length} contato(s) encontrado(s)</strong> - Marque os que deseja enviar</p>`;
         contacts.forEach((contact, index) => {
           html += `
             <div class="contact-item">
-              <input type="checkbox" class="contact-checkbox" value="${contact.id}" data-phone="${contact.phone}" data-name="${contact.name || 'Cliente'}">
+              <input type="checkbox" class="contact-checkbox" value="${contact.id}" data-phone="${contact.phone}" data-name="${contact.name || 'Cliente'}" data-channel="${selectedChannelId}">
               <div class="contact-info">
                 <div class="contact-name">${contact.name || 'Sem nome'}</div>
                 <div class="contact-meta">${contact.phone} • Última msg: ${contact.daysSinceLastMessage || 'N/A'} dias atrás</div>
@@ -929,7 +942,7 @@
 
         contactsList.innerHTML = html;
       } catch (error) {
-        contactsList.innerHTML = '<p style="color: red;">Erro ao buscar contatos: ' + error.message + '</p>';
+        contactsList.innerHTML = '<p style="color: red;">❌ Erro ao buscar contatos: ' + error.message + '</p>';
       }
     }
 
@@ -951,7 +964,7 @@
     async function sendToSelected() {
       const selectedCheckboxes = document.querySelectorAll('.contact-checkbox:checked');
       if (selectedCheckboxes.length === 0) {
-        alert('Selecione pelo menos um contato!');
+        alert('❌ Selecione pelo menos um contato marcando o checkbox!');
         return;
       }
 
@@ -961,7 +974,17 @@
         name: checkbox.dataset.name
       }));
 
-      if (!confirm(`Enviar follow-up para ${selectedContacts.length} contato(s)?`)) {
+      const channelId = document.getElementById('channelSelect').value;
+      const templateId = document.getElementById('templateSelect').value;
+      const channelText = document.getElementById('channelSelect').options[document.getElementById('channelSelect').selectedIndex].text;
+      const templateText = document.getElementById('templateSelect').options[document.getElementById('templateSelect').selectedIndex].text;
+
+      const message = `📤 Enviar follow-up para ${selectedContacts.length} contato(s)?\n\n` +
+                      `📱 Número: ${channelText}\n` +
+                      `💬 Template: ${templateText}\n\n` +
+                      `Contatos:\n${selectedContacts.map(c => `• ${c.name} (${c.phone})`).join('\n')}`;
+
+      if (!confirm(message)) {
         return;
       }
 
@@ -971,17 +994,26 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contacts: selectedContacts,
-            channelId: document.getElementById('channelSelect').value,
-            templateId: document.getElementById('templateSelect').value
+            channelId: channelId,
+            templateId: templateId
           })
         });
 
         const data = await response.json();
-        alert(data.message || 'Envio concluído!');
+
+        if (data.errors && data.errors.length > 0) {
+          alert(`✅ Enviado para ${data.sent} contato(s)\n\n⚠️ Erros:\n${data.errors.join('\n')}`);
+        } else {
+          alert(`✅ Follow-up enviado para ${selectedContacts.length} contato(s)!\n\nVerifique o histórico em alguns segundos.`);
+        }
+
         setTimeout(() => loadStatus(), 2000);
         setTimeout(() => loadHistory(), 3000);
+
+        // Fechar o painel de contatos
+        document.getElementById('contactsCard').style.display = 'none';
       } catch (error) {
-        alert('Erro ao enviar: ' + error.message);
+        alert('❌ Erro ao enviar: ' + error.message);
       }
     }
 
