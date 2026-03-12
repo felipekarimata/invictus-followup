@@ -506,6 +506,7 @@
   <script>
     const API_BASE = '/api';
     let selectedDays = [1, 3, 7, 30];
+    let allTemplates = []; // Guardar todos os templates para filtrar depois
 
     // Load Data
     async function loadData() {
@@ -515,6 +516,9 @@
       await loadConfig();
       await loadStatus();
       await loadHistory();
+
+      // Adicionar listener para quando o canal mudar
+      document.getElementById('channelSelect').addEventListener('change', filterTemplatesByChannel);
     }
 
     // Load Account
@@ -555,21 +559,33 @@
       try {
         const response = await fetch(`${API_BASE}/templates`);
         const data = await response.json();
-        const templates = (data.templates && data.templates.items) || data.templates || [];
+        allTemplates = (data.templates && data.templates.items) || data.templates || [];
 
-        const select = document.getElementById('templateSelect');
-        select.innerHTML = '<option value="">Selecione um template...</option>';
-
-        templates.forEach((template) => {
-          const option = document.createElement('option');
-          option.value = template.id;
-          option.textContent = template.name;
-          option.dataset.preview = template.body || template.message || template.text || 'Sem preview disponível';
-          select.appendChild(option);
-        });
+        // Carregar templates do canal selecionado (ou todos se nenhum selecionado)
+        filterTemplatesByChannel();
       } catch (error) {
         console.error('Erro ao carregar templates:', error);
       }
+    }
+
+    // Filter Templates by Selected Channel
+    function filterTemplatesByChannel() {
+      const selectedChannelId = document.getElementById('channelSelect').value;
+      const select = document.getElementById('templateSelect');
+      select.innerHTML = '<option value="">Selecione um template...</option>';
+
+      // Se nenhum canal selecionado, mostrar todos os templates
+      const filteredTemplates = selectedChannelId
+        ? allTemplates.filter(t => t.channelId === selectedChannelId || !t.channelId)
+        : allTemplates;
+
+      filteredTemplates.forEach((template) => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        option.dataset.preview = template.body || template.message || template.text || 'Sem preview disponível';
+        select.appendChild(option);
+      });
     }
 
     // Load Config
