@@ -94,7 +94,7 @@ function setSetting(db, key, value) {
 async function getConfig(db) {
   const config = {
     selectedChannelId: await getSetting(db, 'selectedChannelId'),
-    enabledChannels: JSON.parse(await getSetting(db, 'enabledChannels') || '[]'),
+    enabledChannels: JSON.parse(await getSetting(db, 'enabledChannels') || '{}'),
     selectedTags: JSON.parse(await getSetting(db, 'selectedTags') || '[]'),
     selectedTemplate: await getSetting(db, 'selectedTemplate'),
     selectedDays: JSON.parse(await getSetting(db, 'selectedDays') || '[1,3,7,30]')

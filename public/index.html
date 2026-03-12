@@ -689,9 +689,12 @@
 
         if (config.selectedChannelId) {
           document.getElementById('channelSelect').value = config.selectedChannelId;
-          // Carregar status de habilitação do canal selecionado
+          // Carregar status de habilitação do canal selecionado (padrão: ativado se não encontrar)
           const isEnabled = enabledChannels[config.selectedChannelId] !== false;
           document.getElementById('enableToggle').checked = isEnabled;
+        } else {
+          // Se nenhum canal foi selecionado, desativar o toggle por segurança
+          document.getElementById('enableToggle').checked = false;
         }
 
         if (config.selectedTemplate) {
