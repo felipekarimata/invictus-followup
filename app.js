@@ -97,7 +97,7 @@ async function getContacts(filters = {}) {
         'Accept': 'application/json'
       }
     });
-    return response.data.contacts || response.data.contact || response.data || [];
+    return response.data.items || response.data.contacts || response.data.contact || response.data || [];
   } catch (error) {
     console.error('❌ Erro ao buscar contatos:', error.message);
     return [];
