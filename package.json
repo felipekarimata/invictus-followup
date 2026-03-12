@@ -4,14 +4,15 @@
   "description": "Sistema automático de follow-up para Helena CRM",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "RUN_NOW=true node index.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "RUN_NOW=true node app.js"
   },
   "keywords": ["whatsapp", "followup", "helena", "crm", "automation"],
   "author": "Seu Nome",
   "license": "MIT",
   "dependencies": {
+    "express": "^4.18.2",
     "axios": "^1.6.0",
     "node-cron": "^3.0.3",
     "dotenv": "^16.3.1"
