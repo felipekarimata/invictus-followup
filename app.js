@@ -360,26 +360,16 @@ app.get('/api/contacts', async (req, res) => {
 
     console.log(`📋 Total de contatos encontrados: ${contacts.length}`);
 
-    // Enriquecer contatos com informação de dias desde última mensagem
-    const enrichedContacts = [];
-    for (const contact of contacts) {
-      try {
-        const messages = await getMessages(contact.id);
-        if (messages && messages.length > 0) {
-          const lastMessage = messages[messages.length - 1];
-          const lastMessageDate = lastMessage.created_at || lastMessage.timestamp || lastMessage.date;
-          const daysSinceLastMessage = getDaysDifference(lastMessageDate);
-
-          enrichedContacts.push({
-            ...contact,
-            daysSinceLastMessage,
-            channelId: channelId // Adicionar o canal selecionado
-          });
-        }
-      } catch (messageError) {
-        console.warn(`⚠️ Erro ao buscar mensagens para ${contact.phone}:`, messageError.message);
-      }
-    }
+    // Retornar contatos com informações básicas (sem tentar buscar mensagens no backend)
+    const enrichedContacts = contacts.map(contact => ({
+      id: contact.id,
+      name: contact.name || contact.nameWhatsapp || 'Sem nome',
+      phone: contact.phoneNumber || contact.phone,
+      phoneFormatted: contact.phoneNumberFormatted || contact.phone,
+      tags: contact.tagNames || contact.tags || [],
+      channelId: channelId,
+      createdAt: contact.createdAt
+    }));
 
     console.log(`✅ Retornando ${enrichedContacts.length} contatos`);
     res.json(enrichedContacts);

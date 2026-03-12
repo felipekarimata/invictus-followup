@@ -543,20 +543,35 @@
 
     <!-- BUSCA E SELEÇÃO DE CONTATOS -->
     <div class="card" id="contactsCard" style="display:none;">
-      <h2>📱 Contatos para Envio</h2>
-      <div style="margin-bottom: 20px;">
-        <button class="btn-secondary" onclick="selectAllContacts()" style="margin-right: 10px;">✅ Selecionar Todos</button>
-        <button class="btn-secondary" onclick="deselectAllContacts()">❌ Desselecionar Todos</button>
+      <h2 style="margin-bottom: 25px;">📱 Contatos para Envio</h2>
+
+      <!-- Botões de Seleção -->
+      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <button class="btn-secondary" onclick="selectAllContacts()" style="flex: 1; padding: 12px; font-weight: bold;">
+          ✅ Selecionar Todos
+        </button>
+        <button class="btn-secondary" onclick="deselectAllContacts()" style="flex: 1; padding: 12px; font-weight: bold;">
+          ❌ Desselecionar Todos
+        </button>
       </div>
-      <div id="contactsList" style="max-height: 400px; overflow-y: auto;">
+
+      <!-- Lista de Contatos -->
+      <div id="contactsList" style="max-height: 500px; overflow-y: auto; border: 2px solid #f0f0f0; border-radius: 10px; padding: 15px; background: #fafafa;">
         <div class="loading">
           <div class="spinner"></div>
           Carregando contatos...
         </div>
       </div>
-      <div style="margin-top: 20px;">
-        <button class="btn-primary" onclick="sendToSelected()" style="width: 100%;">📤 Enviar para Selecionados</button>
+
+      <!-- Informação de Contatos Selecionados -->
+      <div style="margin-top: 15px; padding: 12px; background: #e3f2fd; border-left: 4px solid #667eea; border-radius: 5px;">
+        <span id="selectedCountInfo" style="color: #667eea; font-weight: bold;">0 contatos selecionados</span>
       </div>
+
+      <!-- Botão de Envio -->
+      <button class="btn-primary" onclick="sendToSelected()" style="width: 100%; margin-top: 20px; padding: 14px; font-size: 1.05em; font-weight: bold;">
+        📤 Enviar para Selecionados
+      </button>
     </div>
 
     <!-- HISTÓRICO -->
@@ -919,22 +934,43 @@
           return;
         }
 
-        let html = `<p style="color: #666; margin-bottom: 15px;"><strong>✅ ${contacts.length} contato(s) encontrado(s)</strong> - Marque os que deseja enviar</p>`;
+        let html = `<p style="color: #667eea; margin-bottom: 15px; font-weight: bold; font-size: 1.1em;">✅ ${contacts.length} contato(s) encontrado(s)</p>`;
+
         contacts.forEach((contact, index) => {
           html += `
             <div class="contact-item">
-              <input type="checkbox" class="contact-checkbox" value="${contact.id}" data-phone="${contact.phone}" data-name="${contact.name || 'Cliente'}" data-channel="${selectedChannelId}">
-              <div class="contact-info">
+              <input type="checkbox" class="contact-checkbox" value="${contact.id}" data-phone="${contact.phoneFormatted || contact.phone}" data-name="${contact.name || 'Cliente'}" data-channel="${selectedChannelId}" onchange="updateSelectedCount()">
+              <div class="contact-info" style="flex: 1;">
                 <div class="contact-name">${contact.name || 'Sem nome'}</div>
-                <div class="contact-meta">${contact.phone} • Última msg: ${contact.daysSinceLastMessage || 'N/A'} dias atrás</div>
+                <div class="contact-meta">${contact.phoneFormatted || contact.phone}</div>
               </div>
             </div>
           `;
         });
 
         contactsList.innerHTML = html;
+        updateSelectedCount();
       } catch (error) {
         contactsList.innerHTML = '<p style="color: red;">❌ Erro ao buscar contatos: ' + error.message + '</p>';
+      }
+    }
+
+    // Update Selected Count
+    function updateSelectedCount() {
+      const selectedCount = document.querySelectorAll('.contact-checkbox:checked').length;
+      const totalCount = document.querySelectorAll('.contact-checkbox').length;
+      const infoEl = document.getElementById('selectedCountInfo');
+
+      if (infoEl) {
+        if (selectedCount === 0) {
+          infoEl.textContent = '0 contatos selecionados';
+          infoEl.parentElement.style.background = '#f5f5f5';
+          infoEl.style.color = '#999';
+        } else {
+          infoEl.textContent = `✅ ${selectedCount} de ${totalCount} contato(s) selecionado(s)`;
+          infoEl.parentElement.style.background = '#e8f5e9';
+          infoEl.style.color = '#2e7d32';
+        }
       }
     }
 
@@ -942,14 +978,18 @@
     function selectAllContacts() {
       document.querySelectorAll('.contact-checkbox').forEach(checkbox => {
         checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
       });
+      updateSelectedCount();
     }
 
     // Deselect All Contacts
     function deselectAllContacts() {
       document.querySelectorAll('.contact-checkbox').forEach(checkbox => {
         checkbox.checked = false;
+        checkbox.dispatchEvent(new Event('change'));
       });
+      updateSelectedCount();
     }
 
     // Send to Selected Contacts
