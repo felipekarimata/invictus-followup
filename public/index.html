@@ -379,6 +379,38 @@
         padding: 8px;
       }
     }
+
+    .contact-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 8px;
+      background: #f9f9f9;
+    }
+
+    .contact-item input[type="checkbox"] {
+      margin-right: 12px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .contact-info {
+      flex: 1;
+    }
+
+    .contact-name {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .contact-meta {
+      font-size: 0.9em;
+      color: #666;
+      margin-top: 3px;
+    }
   </style>
 </head>
 <body>
@@ -481,20 +513,42 @@
         </div>
 
         <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
-          <strong>ℹ️ Informações</strong>
-          <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
-            A execução automática roda diariamente às 9h da manhã (horário de São Paulo).
-            Clique em "Executar Agora" para disparo imediato.
-          </p>
+          <strong>ℹ️ Como Funciona</strong>
+          <ul style="margin-top: 10px; color: #666; font-size: 0.9em; margin-left: 20px;">
+            <li>🔄 <strong>Automático:</strong> Executa diariamente às 9h (São Paulo)</li>
+            <li>📅 <strong>Dias:</strong> Envia no 1º, 3º, 7º e 30º dia após última mensagem</li>
+            <li>💬 <strong>Templates:</strong> Devem estar cadastrados no Facebook Business</li>
+            <li>🏷️ <strong>Tags:</strong> Filtra apenas contatos com as tags selecionadas</li>
+            <li>⚡ <strong>Manual:</strong> Clique em "Buscar Contatos" para envio imediato</li>
+          </ul>
         </div>
       </div>
     </div>
 
     <!-- AÇÕES -->
     <div class="actions">
+      <button class="btn-primary" onclick="searchContacts()">🔍 Buscar Contatos</button>
       <button class="btn-primary" onclick="runNow()">▶️ Executar Agora</button>
       <button class="btn-secondary" onclick="loadData()">🔄 Atualizar Status</button>
       <button class="btn-secondary" onclick="clearHistory()">🗑️ Limpar Histórico</button>
+    </div>
+
+    <!-- BUSCA E SELEÇÃO DE CONTATOS -->
+    <div class="card" id="contactsCard" style="display:none;">
+      <h2>📱 Contatos para Envio</h2>
+      <div style="margin-bottom: 20px;">
+        <button class="btn-secondary" onclick="selectAllContacts()" style="margin-right: 10px;">✅ Selecionar Todos</button>
+        <button class="btn-secondary" onclick="deselectAllContacts()">❌ Desselecionar Todos</button>
+      </div>
+      <div id="contactsList" style="max-height: 400px; overflow-y: auto;">
+        <div class="loading">
+          <div class="spinner"></div>
+          Carregando contatos...
+        </div>
+      </div>
+      <div style="margin-top: 20px;">
+        <button class="btn-primary" onclick="sendToSelected()" style="width: 100%;">📤 Enviar para Selecionados</button>
+      </div>
     </div>
 
     <!-- HISTÓRICO -->
@@ -520,6 +574,7 @@
       await loadAccount();
       await loadChannels();
       await loadTemplates();
+      await loadTags();
       await loadConfig();
       await loadStatus();
       await loadHistory();
@@ -666,6 +721,36 @@
       }
     }
 
+    // Load Tags
+    async function loadTags() {
+      try {
+        const response = await fetch(`${API_BASE}/tags`);
+        const tags = await response.json();
+
+        const tagsContainer = document.getElementById('tagsContainer');
+
+        if (!tags || tags.length === 0) {
+          tagsContainer.innerHTML = '<p style="color: #999;">Nenhuma tag encontrada</p>';
+          return;
+        }
+
+        let html = '';
+        tags.forEach(tag => {
+          html += `
+            <label style="display: flex; align-items: center; margin-bottom: 8px; cursor: pointer;">
+              <input type="checkbox" class="tag-checkbox" value="${tag}" style="margin-right: 8px;">
+              <span>${tag}</span>
+            </label>
+          `;
+        });
+
+        tagsContainer.innerHTML = html;
+      } catch (error) {
+        console.error('Erro ao carregar tags:', error);
+        document.getElementById('tagsContainer').innerHTML = '<p style="color: red;">Erro ao carregar tags</p>';
+      }
+    }
+
     // Load History
     async function loadHistory() {
       try {
@@ -744,8 +829,11 @@
     function updatePreview() {
       const select = document.getElementById('templateSelect');
       const selected = select.options[select.selectedIndex];
-      const preview = selected.dataset.preview || 'Nenhuma preview disponível';
-      document.getElementById('previewBox').textContent = preview;
+      let preview = selected.dataset.preview || 'Nenhuma preview disponível';
+
+      // Limpar a mensagem de metadata e mostrar apenas o texto
+      const previewBox = document.getElementById('previewBox');
+      previewBox.innerHTML = `<div style="padding: 15px; background: #f0f0f0; border-left: 4px solid #667eea; border-radius: 5px; white-space: pre-wrap; font-size: 1em; line-height: 1.6; color: #333;">${preview}</div>`;
     }
 
     // Save Config
@@ -789,6 +877,107 @@
       const selectedChannelId = document.getElementById('channelSelect').value;
       const isEnabled = selectedChannelId ? (enabledChannels[selectedChannelId] !== false) : true;
       document.getElementById('enableToggle').checked = isEnabled;
+    }
+
+    // Search Contacts
+    async function searchContacts() {
+      const selectedChannelId = document.getElementById('channelSelect').value;
+      const selectedTags = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(el => el.value);
+
+      if (!selectedChannelId) {
+        alert('Selecione um número de WhatsApp!');
+        return;
+      }
+
+      const contactsCard = document.getElementById('contactsCard');
+      const contactsList = document.getElementById('contactsList');
+      contactsCard.style.display = 'block';
+      contactsList.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando contatos...</div>';
+
+      try {
+        const params = new URLSearchParams({
+          channelId: selectedChannelId,
+          tags: selectedTags.join(','),
+          days: selectedDays.join(',')
+        });
+
+        const response = await fetch(`${API_BASE}/contacts?${params}`);
+        const contacts = await response.json();
+
+        if (!contacts || contacts.length === 0) {
+          contactsList.innerHTML = '<p style="color: #666;">Nenhum contato encontrado com os filtros selecionados.</p>';
+          return;
+        }
+
+        let html = '';
+        contacts.forEach((contact, index) => {
+          html += `
+            <div class="contact-item">
+              <input type="checkbox" class="contact-checkbox" value="${contact.id}" data-phone="${contact.phone}" data-name="${contact.name || 'Cliente'}">
+              <div class="contact-info">
+                <div class="contact-name">${contact.name || 'Sem nome'}</div>
+                <div class="contact-meta">${contact.phone} • Última msg: ${contact.daysSinceLastMessage || 'N/A'} dias atrás</div>
+              </div>
+            </div>
+          `;
+        });
+
+        contactsList.innerHTML = html;
+      } catch (error) {
+        contactsList.innerHTML = '<p style="color: red;">Erro ao buscar contatos: ' + error.message + '</p>';
+      }
+    }
+
+    // Select All Contacts
+    function selectAllContacts() {
+      document.querySelectorAll('.contact-checkbox').forEach(checkbox => {
+        checkbox.checked = true;
+      });
+    }
+
+    // Deselect All Contacts
+    function deselectAllContacts() {
+      document.querySelectorAll('.contact-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+    }
+
+    // Send to Selected Contacts
+    async function sendToSelected() {
+      const selectedCheckboxes = document.querySelectorAll('.contact-checkbox:checked');
+      if (selectedCheckboxes.length === 0) {
+        alert('Selecione pelo menos um contato!');
+        return;
+      }
+
+      const selectedContacts = Array.from(selectedCheckboxes).map(checkbox => ({
+        id: checkbox.value,
+        phone: checkbox.dataset.phone,
+        name: checkbox.dataset.name
+      }));
+
+      if (!confirm(`Enviar follow-up para ${selectedContacts.length} contato(s)?`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/send-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contacts: selectedContacts,
+            channelId: document.getElementById('channelSelect').value,
+            templateId: document.getElementById('templateSelect').value
+          })
+        });
+
+        const data = await response.json();
+        alert(data.message || 'Envio concluído!');
+        setTimeout(() => loadStatus(), 2000);
+        setTimeout(() => loadHistory(), 3000);
+      } catch (error) {
+        alert('Erro ao enviar: ' + error.message);
+      }
     }
 
     // Run Now

@@ -314,6 +314,95 @@ app.post('/api/run-now', async (req, res) => {
   res.json({ message: 'Follow-ups iniciados! Verifique o histórico em alguns segundos.' });
 });
 
+// Get Available Tags
+app.get('/api/tags', async (req, res) => {
+  try {
+    const contacts = await getContacts({});
+    const tagsSet = new Set();
+
+    contacts.forEach(contact => {
+      if (contact.tags && Array.isArray(contact.tags)) {
+        contact.tags.forEach(tag => tagsSet.add(tag));
+      }
+    });
+
+    res.json(Array.from(tagsSet).sort());
+  } catch (error) {
+    console.error('Erro ao buscar tags:', error);
+    res.json([]);
+  }
+});
+
+// Get Contacts (with filters)
+app.get('/api/contacts', async (req, res) => {
+  const channelId = req.query.channelId;
+  const tags = req.query.tags ? req.query.tags.split(',') : [];
+  const days = req.query.days ? req.query.days.split(',').map(Number) : [1, 3, 7, 30];
+
+  try {
+    const contacts = await getContacts({ tags });
+
+    // Enriquecer contatos com informação de dias desde última mensagem
+    const enrichedContacts = [];
+    for (const contact of contacts) {
+      const messages = await getMessages(contact.id);
+      if (messages && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        const lastMessageDate = lastMessage.created_at || lastMessage.timestamp || lastMessage.date;
+        const daysSinceLastMessage = getDaysDifference(lastMessageDate);
+
+        // Apenas incluir se está dentro dos dias selecionados
+        if (days.includes(daysSinceLastMessage)) {
+          enrichedContacts.push({
+            ...contact,
+            daysSinceLastMessage
+          });
+        }
+      }
+    }
+
+    res.json(enrichedContacts);
+  } catch (error) {
+    console.error('Erro ao buscar contatos:', error);
+    res.json([]);
+  }
+});
+
+// Send Bulk (Manual send to selected contacts)
+app.post('/api/send-bulk', async (req, res) => {
+  const { contacts, channelId, templateId } = req.body;
+
+  if (!contacts || contacts.length === 0) {
+    return res.status(400).json({ message: 'Nenhum contato selecionado' });
+  }
+
+  let sentCount = 0;
+  const errors = [];
+
+  for (const contact of contacts) {
+    try {
+      await sendTemplate(
+        contact.phone,
+        templateId,
+        templateId,
+        channelId,
+        [contact.name]
+      );
+      sentCount++;
+    } catch (error) {
+      errors.push(`${contact.phone}: ${error.message}`);
+    }
+
+    // Throttle
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  const message = `✅ Enviado para ${sentCount} contato(s)` +
+                  (errors.length > 0 ? `\n⚠️ ${errors.length} erro(s)` : '');
+
+  res.json({ message, sent: sentCount, failed: errors.length, errors });
+});
+
 // ========== AGENDAMENTO ==========
 
 // CRON: Diariamente às 9h (São Paulo)
