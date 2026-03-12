@@ -590,22 +590,14 @@
 
     // Load Account / Company Name
     async function loadAccount() {
-      try {
-        const response = await fetch(`${API_BASE}/account`);
-        const data = await response.json();
-        let companyName = data.name || data.company || 'Não configurada';
+      const companyName = 'Invictus';
 
-        // Guardar no hidden input
-        document.getElementById('companyInput').value = companyName;
+      // Guardar no hidden input
+      document.getElementById('companyInput').value = companyName;
 
-        // Exibir no display (fixo)
-        document.getElementById('companyDisplay').textContent = companyName;
-        document.getElementById('companyName').textContent = `👥 Empresa: ${companyName}`;
-      } catch (error) {
-        console.error('Erro ao carregar conta:', error);
-        document.getElementById('companyDisplay').textContent = 'Não configurada';
-        document.getElementById('companyName').textContent = `👥 Empresa: Não configurada`;
-      }
+      // Exibir no display (fixo)
+      document.getElementById('companyDisplay').textContent = companyName;
+      document.getElementById('companyName').textContent = `👥 Empresa: ${companyName}`;
     }
 
     // Load Channels
