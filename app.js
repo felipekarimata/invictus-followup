@@ -97,7 +97,7 @@ async function getContacts(filters = {}) {
         'Accept': 'application/json'
       }
     });
-    return response.data.contact || response.data || [];
+    return response.data.contacts || response.data.contact || response.data || [];
   } catch (error) {
     console.error('❌ Erro ao buscar contatos:', error.message);
     return [];
@@ -320,11 +320,14 @@ app.get('/api/tags', async (req, res) => {
     const contacts = await getContacts({});
     const tagsSet = new Set();
 
-    contacts.forEach(contact => {
-      if (contact.tags && Array.isArray(contact.tags)) {
-        contact.tags.forEach(tag => tagsSet.add(tag));
-      }
-    });
+    // Garantir que contacts é um array
+    if (Array.isArray(contacts)) {
+      contacts.forEach(contact => {
+        if (contact.tags && Array.isArray(contact.tags)) {
+          contact.tags.forEach(tag => tagsSet.add(tag));
+        }
+      });
+    }
 
     res.json(Array.from(tagsSet).sort());
   } catch (error) {
@@ -348,6 +351,13 @@ app.get('/api/contacts', async (req, res) => {
 
     // Buscar contatos com os filtros de tags
     const contacts = await getContacts({ tags: tags.length > 0 ? tags : [] });
+
+    // Garantir que contacts é um array
+    if (!Array.isArray(contacts)) {
+      console.error('❌ getContacts retornou tipo inválido:', typeof contacts);
+      return res.status(500).json({ error: 'Erro ao buscar contatos: resposta inválida da API' });
+    }
+
     console.log(`📋 Total de contatos encontrados: ${contacts.length}`);
 
     // Enriquecer contatos com informação de dias desde última mensagem
