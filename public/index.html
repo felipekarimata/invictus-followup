@@ -542,7 +542,7 @@
         channels.forEach((channel) => {
           const option = document.createElement('option');
           option.value = channel.id;
-          option.textContent = `📱 ${channel.phone || channel.name}`;
+          option.textContent = `📱 ${channel.numberFormatted || channel.number || 'Sem número'}`;
           select.appendChild(option);
         });
       } catch (error) {
@@ -555,7 +555,7 @@
       try {
         const response = await fetch(`${API_BASE}/templates`);
         const data = await response.json();
-        const templates = data.templates || [];
+        const templates = (data.templates && data.templates.items) || data.templates || [];
 
         const select = document.getElementById('templateSelect');
         select.innerHTML = '<option value="">Selecione um template...</option>';
