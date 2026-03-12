@@ -1,50 +1,29 @@
-// Servidor Express + Follow-up Automático - Helena CRM
+// 🚀 Helena Follow-up System v2 - PROFISSIONAL
+// URL correta: https://api.helena.run
+// Com banco de dados SQLite + Seleção de números + Templates dinâmicos
+
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const cron = require('node-cron');
 const path = require('path');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ========== CONFIGURAÇÕES ==========
-const HELENA_API_URL = 'https://api.wts.chat';
-const HELENA_TOKEN = process.env.HELENA_TOKEN || 'pn_zff6DnFtKnpVMblIDHkhmQSH9gHnn9nF6LU6vbHnWQ';
+const HELENA_API_URL = process.env.HELENA_API_URL || 'https://api.helena.run';
+const HELENA_TOKEN = process.env.HELENA_TOKEN;
 
-// Templates aprovados no WhatsApp
-const TEMPLATES = {
-  DIA_1: 'ca4d6_reativacao',
-  DIA_3: 'ca4d6_reativacao',
-  DIA_7: 'ca4d6_reativacao',
-  DIA_30: 'ca4d6_reativacao'
-};
-
-// Armazena histórico de seguintes enviados
-let followupHistory = [];
-let followupsSent = {
-  dia_1: new Set(),
-  dia_3: new Set(),
-  dia_7: new Set(),
-  dia_30: new Set()
-};
-
-let lastExecution = null;
-let nextExecution = getNextExecution();
+// Global DB instance
+let database = null;
 
 // ========== MIDDLEWARE ==========
 app.use(express.json());
 app.use(express.static('public'));
 
 // ========== FUNÇÕES AUXILIARES ==========
-
-function getNextExecution() {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(9, 0, 0, 0);
-  return tomorrow;
-}
 
 function getDaysDifference(lastMessageDate) {
   const now = new Date();
@@ -54,87 +33,169 @@ function getDaysDifference(lastMessageDate) {
   return diffDays;
 }
 
-async function getContacts() {
+// Get Account Info
+async function getAccount() {
   try {
-    const response = await axios.get(`${HELENA_API_URL}/contacts`, {
+    const response = await axios.get(`${HELENA_API_URL}/core/v1/account`, {
       headers: {
         'Authorization': `Bearer ${HELENA_TOKEN}`,
-        'Content-Type': 'application/json'
+        'Accept': 'application/json'
       }
     });
-    return response.data.contacts || response.data;
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erro ao buscar conta:', error.message);
+    return null;
+  }
+}
+
+// Get Channels (WhatsApp Numbers)
+async function getChannels() {
+  try {
+    const response = await axios.get(`${HELENA_API_URL}/chat/v1/channel`, {
+      headers: {
+        'Authorization': `Bearer ${HELENA_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
+    return response.data.channels || response.data || [];
+  } catch (error) {
+    console.error('❌ Erro ao buscar canais:', error.message);
+    return [];
+  }
+}
+
+// Get Templates
+async function getTemplates() {
+  try {
+    const response = await axios.get(`${HELENA_API_URL}/chat/v1/template`, {
+      headers: {
+        'Authorization': `Bearer ${HELENA_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
+    return response.data.templates || response.data || [];
+  } catch (error) {
+    console.error('❌ Erro ao buscar templates:', error.message);
+    return [];
+  }
+}
+
+// Get Contacts with filters
+async function getContacts(filters = {}) {
+  try {
+    let url = `${HELENA_API_URL}/core/v1/contact?Status=ACTIVE&PageSize=100`;
+
+    // Add filters
+    if (filters.tags && filters.tags.length > 0) {
+      url += `&Tags=${filters.tags.join(',')}`;
+    }
+
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${HELENA_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
+    return response.data.contact || response.data || [];
   } catch (error) {
     console.error('❌ Erro ao buscar contatos:', error.message);
     return [];
   }
 }
 
+// Get Messages for Contact
 async function getMessages(contactId) {
   try {
-    const response = await axios.get(`${HELENA_API_URL}/messages/${contactId}`, {
-      headers: {
-        'Authorization': `Bearer ${HELENA_TOKEN}`,
-        'Content-Type': 'application/json'
+    const response = await axios.get(
+      `${HELENA_API_URL}/core/v1/contact/${contactId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${HELENA_TOKEN}`,
+          'Accept': 'application/json'
+        }
       }
-    });
-    return response.data.messages || response.data;
+    );
+    return response.data.messages || response.data.chat || [];
   } catch (error) {
-    console.error(`❌ Erro ao buscar mensagens do contato ${contactId}:`, error.message);
+    console.error(`❌ Erro ao buscar mensagens: ${error.message}`);
     return [];
   }
 }
 
-async function sendTemplate(phone, templateName, parameters = []) {
+// Send Template
+async function sendTemplate(phone, templateId, templateName, channelId, parameters = []) {
   try {
     const payload = {
-      phone: phone,
-      template: templateName,
-      parameters: parameters
+      to: phone.startsWith('+') ? phone : `+${phone}`,
+      templateId: templateId,
+      parameters: parameters.length > 0 ? { name: parameters[0] } : {}
     };
 
-    const response = await axios.post(`${HELENA_API_URL}/messages/template`, payload, {
-      headers: {
-        'Authorization': `Bearer ${HELENA_TOKEN}`,
-        'Content-Type': 'application/json'
+    if (channelId) {
+      payload.channelId = channelId;
+    }
+
+    const response = await axios.post(
+      `${HELENA_API_URL}/chat/v1/scheduled-message`,
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${HELENA_TOKEN}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       }
-    });
+    );
 
-    const logEntry = {
-      timestamp: new Date(),
+    await db.logCampaign(database, {
+      contactId: phone,
       phone: phone,
-      template: templateName,
+      templateId: templateId,
+      templateName: templateName,
+      channelId: channelId,
       status: 'success',
-      message: `✅ Template "${templateName}" enviado para ${phone}`
-    };
-    followupHistory.push(logEntry);
+      message: `✅ Template enviado para ${phone}`
+    });
 
     console.log(`✅ Template "${templateName}" enviado para ${phone}`);
     return response.data;
   } catch (error) {
-    const logEntry = {
-      timestamp: new Date(),
-      phone: phone,
-      template: templateName,
-      status: 'error',
-      message: `❌ Erro ao enviar para ${phone}: ${error.response?.data?.message || error.message}`
-    };
-    followupHistory.push(logEntry);
+    const errorMsg = error.response?.data?.message || error.message;
 
-    console.error(`❌ Erro ao enviar template para ${phone}:`, error.response?.data || error.message);
+    await db.logCampaign(database, {
+      contactId: phone,
+      phone: phone,
+      templateId: templateId,
+      templateName: templateName,
+      channelId: channelId,
+      status: 'error',
+      message: `❌ Erro: ${errorMsg}`
+    });
+
+    console.error(`❌ Erro ao enviar para ${phone}: ${errorMsg}`);
     return null;
   }
 }
 
-// ========== LÓGICA PRINCIPAL ==========
-
+// Process Follow-ups
 async function processFollowups() {
   console.log('\n🚀 Iniciando processamento de follow-ups...');
   console.log(`⏰ Horário: ${new Date().toLocaleString('pt-BR')}\n`);
 
-  lastExecution = new Date();
-  nextExecution = getNextExecution();
+  // Get config
+  const config = await db.getConfig(database);
 
-  const contacts = await getContacts();
+  // Validar canal
+  if (!config.selectedChannelId) {
+    console.warn('⚠️ Nenhum canal selecionado!');
+    return;
+  }
+
+  // Get contacts com filtros
+  const contacts = await getContacts({
+    tags: config.selectedTags && config.selectedTags.length > 0 ? config.selectedTags : []
+  });
   console.log(`📋 Total de contatos encontrados: ${contacts.length}\n`);
 
   let sentCount = 0;
@@ -144,68 +205,102 @@ async function processFollowups() {
     const phone = contact.phone;
     const name = contact.name || 'Cliente';
 
+    // Get messages
     const messages = await getMessages(contactId);
-
     if (!messages || messages.length === 0) {
-      console.log(`⚠️  Contato ${phone} sem mensagens, pulando...`);
+      console.log(`⚠️ Contato ${phone} sem mensagens`);
       continue;
     }
 
+    // Get last message date
     const lastMessage = messages[messages.length - 1];
-    const lastMessageDate = lastMessage.created_at || lastMessage.timestamp;
+    const lastMessageDate = lastMessage.created_at || lastMessage.timestamp || lastMessage.date;
     const daysSinceLastMessage = getDaysDifference(lastMessageDate);
 
     console.log(`👤 ${name} (${phone}) - Última msg há ${daysSinceLastMessage} dias`);
 
-    if (daysSinceLastMessage === 1 && !followupsSent.dia_1.has(phone)) {
-      await sendTemplate(phone, TEMPLATES.DIA_1, [name]);
-      followupsSent.dia_1.add(phone);
-      sentCount++;
-    } else if (daysSinceLastMessage === 3 && !followupsSent.dia_3.has(phone)) {
-      await sendTemplate(phone, TEMPLATES.DIA_3, [name]);
-      followupsSent.dia_3.add(phone);
-      sentCount++;
-    } else if (daysSinceLastMessage === 7 && !followupsSent.dia_7.has(phone)) {
-      await sendTemplate(phone, TEMPLATES.DIA_7, [name]);
-      followupsSent.dia_7.add(phone);
-      sentCount++;
-    } else if (daysSinceLastMessage === 30 && !followupsSent.dia_30.has(phone)) {
-      await sendTemplate(phone, TEMPLATES.DIA_30, [name]);
-      followupsSent.dia_30.add(phone);
+    // Check if should send based on config days
+    if (config.selectedDays.includes(daysSinceLastMessage)) {
+      await sendTemplate(
+        phone,
+        config.selectedTemplate,
+        config.selectedTemplate,
+        config.selectedChannelId,
+        [name]
+      );
       sentCount++;
     }
 
+    // Throttle
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   console.log(`\n✅ Processamento concluído! ${sentCount} mensagens enviadas.\n`);
 }
 
-// ========== ROTAS ==========
+// ========== ROTAS API ==========
 
 // Dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API: Status
-app.get('/api/status', (req, res) => {
+// Get Account
+app.get('/api/account', async (req, res) => {
+  const account = await getAccount();
+  res.json(account || { error: 'Não foi possível buscar conta' });
+});
+
+// Get Channels
+app.get('/api/channels', async (req, res) => {
+  const channels = await getChannels();
+  res.json({ channels });
+});
+
+// Get Templates
+app.get('/api/templates', async (req, res) => {
+  const templates = await getTemplates();
+  res.json({ templates });
+});
+
+// Get Config
+app.get('/api/config', async (req, res) => {
+  const config = await db.getConfig(database);
+  res.json(config);
+});
+
+// Save Config
+app.post('/api/config', async (req, res) => {
+  await db.saveConfig(database, req.body);
+  res.json({ success: true, message: 'Configuração salva!' });
+});
+
+// Get Status
+app.get('/api/status', async (req, res) => {
+  const stats = await db.getStats(database);
+  const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(2) : 0;
+
+  const nextExecution = new Date();
+  nextExecution.setDate(nextExecution.getDate() + 1);
+  nextExecution.setHours(9, 0, 0, 0);
+
   res.json({
     status: 'online',
-    lastExecution: lastExecution,
+    totalSent: stats.success,
+    totalErrors: stats.error,
+    successRate: successRate,
     nextExecution: nextExecution,
-    tokenConfigured: !!HELENA_TOKEN,
-    totalSent: followupHistory.filter(l => l.status === 'success').length,
-    totalErrors: followupHistory.filter(l => l.status === 'error').length
+    timestamp: new Date()
   });
 });
 
-// API: Histórico
-app.get('/api/history', (req, res) => {
-  res.json(followupHistory.slice(-50)); // Últimas 50
+// Get History
+app.get('/api/history', async (req, res) => {
+  const history = await db.getHistory(database, 50);
+  res.json(history);
 });
 
-// API: Executar agora (teste)
+// Run Now (Manual)
 app.post('/api/run-now', async (req, res) => {
   console.log('🧪 Execução manual disparada');
   processFollowups();
@@ -214,7 +309,7 @@ app.post('/api/run-now', async (req, res) => {
 
 // ========== AGENDAMENTO ==========
 
-// Executar todos os dias às 9h da manhã
+// CRON: Diariamente às 9h (São Paulo)
 cron.schedule('0 9 * * *', () => {
   console.log('⏰ CRON disparado - Executando follow-ups diários...');
   processFollowups();
@@ -222,17 +317,32 @@ cron.schedule('0 9 * * *', () => {
   timezone: "America/Sao_Paulo"
 });
 
-// Para testes: executar imediatamente ao iniciar
+// Para testes
 if (process.env.RUN_NOW === 'true') {
-  console.log('🧪 Modo teste ativado - Executando agora...');
-  processFollowups();
+  console.log('🧪 Modo teste ativado');
+  setTimeout(() => processFollowups(), 1000);
 }
 
 // ========== INICIAR SERVIDOR ==========
 
-app.listen(PORT, () => {
-  console.log(`\n🤖 Sistema de Follow-up iniciado!`);
-  console.log(`🌐 Servidor rodando em: http://localhost:${PORT}`);
-  console.log(`📅 Próxima execução: ${nextExecution.toLocaleString('pt-BR')}`);
-  console.log(`🔑 Token configurado: ${HELENA_TOKEN ? 'SIM ✅' : 'NÃO ❌'}\n`);
-});
+async function startServer() {
+  try {
+    // Initialize database
+    database = await db.initDB();
+
+    app.listen(PORT, () => {
+      console.log(`\n🤖 Sistema Helena Follow-up v2 iniciado!`);
+      console.log(`🌐 Dashboard: http://localhost:${PORT}`);
+      console.log(`📅 Próxima execução: Amanhã às 9h`);
+      console.log(`🔑 API: ${HELENA_API_URL}`);
+      console.log(`✅ Token configurado\n`);
+    });
+  } catch (error) {
+    console.error('❌ Erro ao iniciar servidor:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+module.exports = app;
