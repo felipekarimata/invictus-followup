@@ -394,19 +394,25 @@
       <div class="card">
         <h2>⚙️ Configurações</h2>
 
+        <!-- Nome da Empresa -->
+        <div class="config-group">
+          <label>👥 Nome da Empresa</label>
+          <input type="text" id="companyInput" placeholder="Ex: Invictus Marketing" onchange="saveConfig()">
+        </div>
+
         <!-- Número WhatsApp -->
         <div class="config-group">
           <label>📱 Número WhatsApp</label>
-          <select id="channelSelect" onchange="saveConfig()">
+          <select id="channelSelect" onchange="onChannelChange()">
             <option value="">Carregando números...</option>
           </select>
         </div>
 
-        <!-- Toggle Ativar/Desativar -->
+        <!-- Toggle Ativar/Desativar por Número -->
         <div class="config-group">
           <label>
             <div class="toggle-switch">
-              Ativar Follow-up
+              Ativar Follow-up para este número
               <label class="switch">
                 <input type="checkbox" id="enableToggle" checked onchange="saveConfig()">
                 <span class="slider"></span>
@@ -507,6 +513,7 @@
     const API_BASE = '/api';
     let selectedDays = [1, 3, 7, 30];
     let allTemplates = []; // Guardar todos os templates para filtrar depois
+    let enabledChannels = {}; // Guardar status de habilitação por canal {channelId: true/false}
 
     // Load Data
     async function loadData() {
@@ -516,20 +523,28 @@
       await loadConfig();
       await loadStatus();
       await loadHistory();
-
-      // Adicionar listener para quando o canal mudar
-      document.getElementById('channelSelect').addEventListener('change', filterTemplatesByChannel);
     }
 
-    // Load Account
+    // Load Account / Company Name
     async function loadAccount() {
       try {
         const response = await fetch(`${API_BASE}/account`);
         const data = await response.json();
-        const companyName = data.name || data.company || 'Empresa';
-        document.getElementById('companyName').textContent = `👥 Empresa: ${companyName}`;
+        let companyName = data.name || data.company || '';
+
+        if (!companyName) {
+          // Se API falhar, não mostra, mas o usuário pode digitar no input
+          companyName = '';
+        }
+
+        const companyInput = document.getElementById('companyInput');
+        if (companyName) {
+          companyInput.value = companyName;
+        }
+        document.getElementById('companyName').textContent = `👥 Empresa: ${companyInput.value || 'Não configurada'}`;
       } catch (error) {
         console.error('Erro ao carregar conta:', error);
+        document.getElementById('companyName').textContent = `👥 Empresa: Digite o nome`;
       }
     }
 
@@ -594,8 +609,22 @@
         const response = await fetch(`${API_BASE}/config`);
         const config = await response.json();
 
+        // Carregar nome da empresa
+        if (config.companyName) {
+          document.getElementById('companyInput').value = config.companyName;
+          document.getElementById('companyName').textContent = `👥 Empresa: ${config.companyName}`;
+        }
+
+        // Carregar canais habilitados/desabilitados
+        if (config.enabledChannels) {
+          enabledChannels = config.enabledChannels;
+        }
+
         if (config.selectedChannelId) {
           document.getElementById('channelSelect').value = config.selectedChannelId;
+          // Carregar status de habilitação do canal selecionado
+          const isEnabled = enabledChannels[config.selectedChannelId] !== false;
+          document.getElementById('enableToggle').checked = isEnabled;
         }
 
         if (config.selectedTemplate) {
@@ -721,11 +750,22 @@
 
     // Save Config
     async function saveConfig() {
+      // Atualizar habilitação do canal atual
+      const selectedChannelId = document.getElementById('channelSelect').value;
+      if (selectedChannelId) {
+        enabledChannels[selectedChannelId] = document.getElementById('enableToggle').checked;
+      }
+
+      // Atualizar nome da empresa no header
+      const companyName = document.getElementById('companyInput').value;
+      document.getElementById('companyName').textContent = `👥 Empresa: ${companyName || 'Não configurada'}`;
+
       const config = {
-        selectedChannelId: document.getElementById('channelSelect').value,
+        companyName: companyName,
+        selectedChannelId: selectedChannelId,
+        enabledChannels: enabledChannels,
         selectedTemplate: document.getElementById('templateSelect').value,
         selectedDays: selectedDays,
-        enableFollowup: document.getElementById('enableToggle').checked,
         selectedTags: [] // TODO: Implementar seleção de tags
       };
 
@@ -738,6 +778,17 @@
       } catch (error) {
         console.error('Erro ao salvar configuração:', error);
       }
+    }
+
+    // Quando o canal muda
+    function onChannelChange() {
+      saveConfig();
+      filterTemplatesByChannel();
+
+      // Carregar o status de habilitação do novo canal
+      const selectedChannelId = document.getElementById('channelSelect').value;
+      const isEnabled = selectedChannelId ? (enabledChannels[selectedChannelId] !== false) : true;
+      document.getElementById('enableToggle').checked = isEnabled;
     }
 
     // Run Now

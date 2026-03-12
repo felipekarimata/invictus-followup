@@ -192,6 +192,13 @@ async function processFollowups() {
     return;
   }
 
+  // Verificar se o canal está habilitado
+  const enabledChannels = config.enabledChannels || {};
+  if (enabledChannels[config.selectedChannelId] === false) {
+    console.warn(`⚠️ Canal ${config.selectedChannelId} está desabilitado!`);
+    return;
+  }
+
   // Get contacts com filtros
   const contacts = await getContacts({
     tags: config.selectedTags && config.selectedTags.length > 0 ? config.selectedTags : []
